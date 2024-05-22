@@ -1,0 +1,46 @@
+name: "Deploy Apps to Production on fly.io"
+description: "Set of command to deploy your app to 'production'"
+author: Fly
+branding:
+  icon: "upload-cloud"
+  color: "purple"
+runs:
+  using: "docker"
+  image: "Dockerfile"
+inputs:
+  dockerfile:
+    description: Dockerfile to use if there is a custom one outside of the root repository
+  buildTarget:
+    description: Build target to use over the dockerfile
+  buildArg:
+    description: Build Args to be used in the docker build. Separate multiple build args with a space
+  name:
+    description: Fly app name
+  image:
+    description: Optional pre-existing Docker image to use
+  config:
+    description: Optional path to a custom Fly toml config. Config path should be relative to `path` parameter, if specified.
+  region:
+    description: Region to launch the app in (alternatively, set the env FLY_REGION)
+  org:
+    description: Organization to launch the app in (alternatively, set the env FLY_ORG)
+  path:
+    description: path to a directory containing a fly.toml to clone
+  postgres:
+    description: Optionally attach the app to a pre-existing Postgres cluster on Fly
+  secrets:
+    description: Secrets to be set on the app. Separate multiple secrets with a space
+  vmsize:
+    description: Set app VM to a named size, eg. shared-cpu-1x, dedicated-cpu-1x, dedicated-cpu-2x etc. Takes precedence over cpu, cpu kind, and memory inputs.
+  cpu:
+    description: Set app VM CPU (defaults to 1 cpu)
+    default: 1
+  cpukind:
+    description: Set app VM CPU kind - shared or performance. (defaults to shared)
+    default: shared
+  memory:
+    description: Set app VM memory in megabytes (defaults to 256 megabytes)
+    default: 256
+  ha:
+    description: Create spare machines that increases app availability (default false)
+    default: false

@@ -1,0 +1,57 @@
+#!/bin/sh -l
+
+set -ex
+
+if [ -n "$INPUT_PATH" ]; then
+  # Allow user to change directories in which to run Fly commands.
+  cd "$INPUT_PATH" || exit
+fi
+
+GITHUB_REPOSITORY_NAME=${GITHUB_REPOSITORY#$GITHUB_REPOSITORY_OWNER/}
+EVENT_TYPE=$(jq -r .action /github/workflow/event.json)
+
+# Default the Fly app name to pr-{number}-{repo_owner}-{repo_name}
+app="${INPUT_NAME:-$GITHUB_REPOSITORY_OWNER-$GITHUB_REPOSITORY_NAME}"
+# Change underscores to hyphens.
+app="${app//_/-}"
+# to lowercase
+app=$(echo "$app" | tr '[:upper:]' '[:lower:]')
+region="${INPUT_REGION:-${FLY_REGION:-iad}}"
+org="${INPUT_ORG:-${FLY_ORG:-personal}}"
+image="$INPUT_IMAGE"
+config="${INPUT_CONFIG:-fly.toml}"
+buildArgs=$(echo -n "${INPUT_BUILDARG}" | tr -d '\n' |sed 's/ \([^=]\+\)=/ --build-arg \1=/g' | sed 's/^/ --build-arg /')
+
+# Deploy the Fly app, creating it first if needed.
+if ! flyctl status --app "$app"; then
+  # Backup the original config file since 'flyctl launch' messes up the [build.args] section
+  cp "$config" "$config.bak"
+  flyctl launch --no-deploy --copy-config --name "$app" --image "$image" --region "$region" --org "$org"
+  # Restore the original config file
+  cp "$config.bak" "$config"
+fi
+if [ -n "$INPUT_SECRETS" ]; then
+  echo $INPUT_SECRETS | tr " " "\n" | flyctl secrets import --app "$app"
+fi
+
+# Attach postgres cluster to the app if specified.
+if [ -n "$INPUT_POSTGRES" ]; then
+  flyctl postgres attach "$INPUT_POSTGRES" --app "$app" || true
+fi
+
+# Trigger the deploy of the new version.
+echo "Contents of config $config file: " && cat "$config"
+if [ -n "$INPUT_VM" ]; then
+  flyctl deploy ${buildArgs} --build-target "$INPUT_BUILDTARGET" --dockerfile "$INPUT_DOCKERFILE" --config "$config" --app "$app" --regions "$region" --image "$image" --strategy immediate --ha=$INPUT_HA --vm-size "$INPUT_VMSIZE"
+else
+  flyctl deploy ${buildArgs} --build-target "$INPUT_BUILDTARGET" --dockerfile "$INPUT_DOCKERFILE" --config "$config" --app "$app" --regions "$region" --image "$image" --strategy immediate --ha=$INPUT_HA --vm-cpu-kind "$INPUT_CPUKIND" --vm-cpus $INPUT_CPU --vm-memory "$INPUT_MEMORY"
+fi
+
+# Make some info available to the GitHub workflow.
+flyctl status --app "$app" --json >status.json
+hostname=$(jq -r .Hostname status.json)
+appid=$(jq -r .ID status.json)
+echo "hostname=$hostname" >> $GITHUB_OUTPUT
+echo "url=https://$hostname" >> $GITHUB_OUTPUT
+echo "id=$appid" >> $GITHUB_OUTPUT
+echo "name=$app" >> $GITHUB_OUTPUT
